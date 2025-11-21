@@ -8,13 +8,13 @@ import {BinaryMarket} from "../src/BinaryMarket.sol";
 
 contract DeployScript is Script {
     function run() external {
-        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
-        address deployer = vm.addr(deployerPrivateKey);
-        
+        // Use the signer provided by forge via keystore/private-key flags.
+        // This avoids requiring the private key in the environment or terminal.
+        vm.startBroadcast();
+
+        address deployer = msg.sender;
         console2.log("Deploying contracts with address:", deployer);
         console2.log("Deployer balance:", deployer.balance);
-        
-        vm.startBroadcast(deployerPrivateKey);
         
         // Deploy Mock USDC for testing
         MockUSDC usdc = new MockUSDC();
