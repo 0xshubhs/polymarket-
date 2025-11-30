@@ -20,9 +20,9 @@ contract ProtocolConfigTest is Test {
     
     function testInitialState() public view {
         assertEq(config.treasury(), treasury);
-        assertEq(config.protocolFeeRate(), 20);
-        assertEq(config.maxProtocolFeeRate(), 500);
-        assertEq(config.disputePeriod(), 3 days);
+        assertEq(uint256(config.protocolFeeRate()), 20);
+        assertEq(uint256(config.maxProtocolFeeRate()), 500);
+        assertEq(uint256(config.disputePeriod()), 3 days);
         assertFalse(config.paused());
         assertTrue(config.hasRole(config.DEFAULT_ADMIN_ROLE(), admin));
     }
@@ -45,7 +45,7 @@ contract ProtocolConfigTest is Test {
         
         config.setProtocolFeeRate(100); // 1%
         
-        assertEq(config.protocolFeeRate(), 100);
+        assertEq(uint256(config.protocolFeeRate()), 100);
     }
     
     function testCannotSetFeeTooHigh() public {

@@ -35,12 +35,19 @@ contract ProtocolConfig is AccessControl, Pausable {
     
     constructor(address _treasury) {
         require(_treasury != address(0), "Invalid treasury");
-        
         treasury = _treasury;
+        
+        // Initialize packed values
+        protocolFeeRate = 20; // 0.2%
+        maxProtocolFeeRate = 500; // 5%
+        minMarketDuration = uint32(1 hours);
+        maxMarketDuration = uint32(365 days);
+        disputePeriod = uint32(3 days);
         
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(PAUSER_ROLE, msg.sender);
         _grantRole(MARKET_CREATOR_ROLE, msg.sender);
+        _grantRole(ORACLE_ROLE, msg.sender);
         _grantRole(FEE_MANAGER_ROLE, msg.sender);
     }
     
@@ -119,15 +126,18 @@ contract ProtocolConfig is AccessControl, Pausable {
     ) external view returns (bool) {
         require(approvedOracles[oracle], "Oracle not approved");
         require(bytes(question).length > 0 && bytes(question).length <= 500, "Invalid question");
+        require(endTime > block.timestamp, "End time must be in future");
         
-        uint256 duration = endTime - block.timestamp;
-        require(duration >= minMarketDuration && duration <= maxMarketDuration, "Invalid duration");
+        unchecked {
+            uint256 duration = endTime - block.timestamp;
+            require(duration >= uint256(minMarketDuration) && duration <= uint256(maxMarketDuration), "Invalid duration");
+        }
         
         return true;
     }
     
     /// @notice Grant admin role to new address (for testing/migrations)
-    function transferAdmin(address newAdmin) external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function transferAdmin(address newAdmin) external onlyRole(DEFAULT_ADMIN_ROLE) {         
         require(newAdmin != address(0), "Invalid address");
         _grantRole(DEFAULT_ADMIN_ROLE, newAdmin);
     }

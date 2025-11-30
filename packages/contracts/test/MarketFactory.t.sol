@@ -1,111 +1,115 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import {Test, console2} from "forge-std/Test.sol";
-import {MarketFactory} from "../src/MarketFactory.sol";
-import {BinaryMarket} from "../src/BinaryMarket.sol";
-import {ConditionalTokens} from "../src/ConditionalTokens.sol";
+import {Test} from "forge-std/Test.sol";
+import {console} from "forge-std/console.sol";
 import {MockUSDC} from "../src/MockUSDC.sol";
+import {MarketFactory} from "../src/MarketFactory.sol";
+import {ConditionalTokens} from "../src/ConditionalTokens.sol";
 
 contract MarketFactoryTest is Test {
-    MarketFactory public factory;
     MockUSDC public usdc;
+    MarketFactory public factory;
+    ConditionalTokens public ctf;
     
-    address public oracle = address(0x1);
+    address public operator = address(1);
+    address public feeRecipient = address(2);
+    address public treasury = address(3);
     
     function setUp() public {
         usdc = new MockUSDC();
-        factory = new MarketFactory(usdc, address(this));
+        factory = new MarketFactory(usdc, operator, feeRecipient, treasury);
+        ctf = ConditionalTokens(factory.getCTF());
     }
     
     function testCreateMarket() public {
-        string memory question = "Will BTC reach $100k?";
-        uint256 endTime = block.timestamp + 30 days;
-        
-        address market = factory.createMarket(oracle, question, endTime);
-        
-        assertTrue(market != address(0), "Market should be created");
-        assertTrue(factory.isMarket(market), "Market should be registered");
-        assertEq(factory.marketCount(), 1, "Market count should be 1");
-    }
-    
-    function testCreateMultipleMarkets() public {
-        uint256 marketCount = 5;
-        
-        for (uint256 i = 0; i < marketCount; i++) {
-            string memory question = string(abi.encodePacked("Question ", vm.toString(i)));
-            uint256 endTime = block.timestamp + 30 days;
-            
-            factory.createMarket(oracle, question, endTime);
-        }
-        
-        assertEq(factory.marketCount(), marketCount, "Market count mismatch");
-    }
-    
-    function testGetMarket() public {
-        string memory question = "Test market";
-        uint256 endTime = block.timestamp + 30 days;
-        
-        address createdMarket = factory.createMarket(oracle, question, endTime);
-        address retrievedMarket = factory.getMarket(0);
-        
-        assertEq(retrievedMarket, createdMarket, "Retrieved market should match created market");
-    }
-    
-    function testGetMarkets() public {
-        // Create multiple markets
-        for (uint256 i = 0; i < 10; i++) {
-            string memory question = string(abi.encodePacked("Question ", vm.toString(i)));
-            factory.createMarket(oracle, question, block.timestamp + 30 days);
-        }
-        
-        // Get markets in range
-        address[] memory markets = factory.getMarkets(0, 5);
-        
-        assertEq(markets.length, 5, "Should return 5 markets");
-    }
-    
-    function testCannotCreateMarketWithInvalidOracle() public {
-        vm.expectRevert("Invalid oracle");
-        factory.createMarket(address(0), "Question", block.timestamp + 30 days);
-    }
-    
-    function testCannotCreateMarketWithPastEndTime() public {
-        vm.expectRevert("Invalid end time");
-        factory.createMarket(oracle, "Question", block.timestamp - 1);
-    }
-    
-    function testCannotCreateMarketWithEmptyQuestion() public {
-        vm.expectRevert("Empty question");
-        factory.createMarket(oracle, "", block.timestamp + 30 days);
-    }
-    
-    function testMarketHasCorrectParameters() public {
-        string memory question = "Test question";
-        uint256 endTime = block.timestamp + 30 days;
-        
-        address marketAddr = factory.createMarket(oracle, question, endTime);
-        BinaryMarket market = BinaryMarket(marketAddr);
-        
-        assertEq(market.question(), question, "Question mismatch");
-        assertEq(market.endTime(), endTime, "End time mismatch");
-        assertEq(market.oracle(), oracle, "Oracle mismatch");
-        assertEq(address(market.collateralToken()), address(usdc), "Collateral token mismatch");
-    }
-    
-    function testConditionalTokensShared() public {
-        // Create two markets
-        address market1 = factory.createMarket(oracle, "Question 1", block.timestamp + 30 days);
-        address market2 = factory.createMarket(oracle, "Question 2", block.timestamp + 30 days);
-        
-        // Both should use the same conditional tokens contract
-        BinaryMarket m1 = BinaryMarket(market1);
-        BinaryMarket m2 = BinaryMarket(market2);
-        
-        assertEq(
-            address(m1.conditionalTokens()),
-            address(m2.conditionalTokens()),
-            "Should share conditional tokens"
+        bytes32 questionId = factory.createMarket(
+            "Will ETH reach $10k?",
+            "Crypto",
+            address(this),
+            block.timestamp + 365 days,
+            false
         );
+        
+        MarketFactory.Market memory market = factory.getMarket(questionId);
+        assertEq(market.question, "Will ETH reach $10k?");
+        assertEq(market.category, "Crypto");
+        assertEq(market.resolver, address(this));
+        assertFalse(market.isNegRisk);
+        assertFalse(market.resolved);
+    }
+    
+    function testMarketCount() public {
+        uint256 countBefore = factory.marketCount();
+        
+        factory.createMarket(
+            "Question 1",
+            "Category",
+            address(this),
+            block.timestamp + 100 days,
+            false
+        );
+        
+        assertEq(factory.marketCount(), countBefore + 1);
+    }
+    
+    function testResolveMarket() public {
+        bytes32 questionId = factory.createMarket(
+            "Will BTC reach $100k?",
+            "Crypto",
+            address(this),
+            block.timestamp + 365 days,
+            false
+        );
+        
+        // Resolve: YES wins
+        uint256[] memory payouts = new uint256[](2);
+        payouts[0] = 1; // YES
+        payouts[1] = 0; // NO
+        
+        factory.resolveMarket(questionId, payouts);
+        
+        MarketFactory.Market memory market = factory.getMarket(questionId);
+        assertTrue(market.resolved);
+    }
+    
+    function testCannotResolveUnauthorized() public {
+        bytes32 questionId = factory.createMarket(
+            "Test Question",
+            "Test",
+            address(this),
+            block.timestamp + 365 days,
+            false
+        );
+        
+        uint256[] memory payouts = new uint256[](2);
+        payouts[0] = 1;
+        payouts[1] = 0;
+        
+        vm.prank(address(0x123));
+        vm.expectRevert();
+        factory.resolveMarket(questionId, payouts);
+    }
+    
+    function testGetMarketIds() public {
+        factory.createMarket("Q1", "C1", address(this), block.timestamp + 100 days, false);
+        factory.createMarket("Q2", "C2", address(this), block.timestamp + 100 days, false);
+        factory.createMarket("Q3", "C3", address(this), block.timestamp + 100 days, false);
+        
+        bytes32[] memory ids = factory.getMarketIds(0, 3);
+        assertEq(ids.length, 3);
+    }
+    
+    function testCreateNegRiskMarket() public {
+        bytes32 questionId = factory.createMarket(
+            "Will NOT happen by date?",
+            "NegRisk",
+            address(this),
+            block.timestamp + 365 days,
+            true // negRisk
+        );
+        
+        MarketFactory.Market memory market = factory.getMarket(questionId);
+        assertTrue(market.isNegRisk);
     }
 }

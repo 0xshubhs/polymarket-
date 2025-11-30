@@ -3,118 +3,167 @@ pragma solidity ^0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
-import {BinaryMarket} from "./BinaryMarket.sol";
-import {BinaryMarketV2} from "./BinaryMarketV2.sol";
 import {ConditionalTokens} from "./ConditionalTokens.sol";
+import {CTFExchange} from "./CTFExchange.sol";
+import {OptimisticOracle} from "./OptimisticOracle.sol";
+import {NegRiskAdapter} from "./NegRiskAdapter.sol";
 import {ProtocolConfig} from "./ProtocolConfig.sol";
 
 /// @title MarketFactory
-/// @notice Factory contract for creating and managing binary prediction markets
-/// @dev Supports both V1 (simple) and V2 (advanced) market types
+/// @notice Factory contract for creating prediction markets using Polymarket architecture
+/// @dev Creates markets using CTF + CTFExchange + OptimisticOracle (CLOB model, not AMM)
 contract MarketFactory is Ownable {
     ConditionalTokens public immutable conditionalTokens;
+    CTFExchange public immutable ctfExchange;
+    OptimisticOracle public immutable optimisticOracle;
+    NegRiskAdapter public immutable negRiskAdapter;
     IERC20 public immutable collateralToken;
     ProtocolConfig public protocolConfig;
     
-    address[] public allMarkets;
-    mapping(address => bool) public isMarket;
+    struct Market {
+        bytes32 questionId;
+        bytes32 conditionId;
+        string question;
+        string category;
+        address resolver;
+        uint256 endTime;
+        uint256 createdAt;
+        bool isNegRisk;
+        bool resolved;
+    }
+    
+    bytes32[] public allMarketIds;
+    mapping(bytes32 => Market) public marketData;
     
     event MarketCreated(
-        address indexed market,
-        address indexed oracle,
-        string question,
-        uint256 endTime,
-        uint256 indexed marketIndex
-    );
-    
-    event MarketV2Created(
-        address indexed market,
-        address indexed oracle,
+        bytes32 indexed questionId,
+        bytes32 indexed conditionId,
+        address indexed resolver,
         string question,
         string category,
         uint256 endTime,
-        uint256 indexed marketIndex
+        bool isNegRisk
+    );
+    
+    event MarketResolved(
+        bytes32 indexed questionId,
+        bytes32 indexed conditionId,
+        uint256[] payouts
     );
     
     event ProtocolConfigUpdated(address indexed oldConfig, address indexed newConfig);
     
-    constructor(IERC20 _collateralToken, address _treasury) Ownable(msg.sender) {
+    constructor(
+        IERC20 _collateralToken,
+        address _operator,
+        address _feeRecipient,
+        address _treasury
+    ) Ownable(msg.sender) {
         collateralToken = _collateralToken;
         conditionalTokens = new ConditionalTokens();
+        ctfExchange = new CTFExchange(conditionalTokens, _collateralToken, _operator, _feeRecipient);
+        optimisticOracle = new OptimisticOracle(_collateralToken, msg.sender);
+        negRiskAdapter = new NegRiskAdapter(conditionalTokens);
         protocolConfig = new ProtocolConfig(_treasury);
+        
+        // Grant deployer all roles for convenience
+        protocolConfig.grantRole(protocolConfig.MARKET_CREATOR_ROLE(), msg.sender);
     }
     
-    /// @notice Create a new binary prediction market (V1 - simple)
-    /// @param oracle Address that will resolve the market
+    /// @notice Create a new prediction market
     /// @param question The prediction question
-    /// @param endTime Timestamp when trading ends
+    /// @param category Market category
+    /// @param resolver Address that can resolve via oracle
+    /// @param endTime When trading/market ends
+    /// @param isNegRisk Whether this is a negative risk market
     function createMarket(
-        address oracle,
         string memory question,
-        uint256 endTime
-    ) external returns (address market) {
-        require(oracle != address(0), "Invalid oracle");
-        require(endTime > block.timestamp, "Invalid end time");
-        require(bytes(question).length > 0, "Empty question");
-        
-        BinaryMarket newMarket = new BinaryMarket(
-            conditionalTokens,
-            collateralToken,
-            oracle,
-            question,
-            endTime
-        );
-        
-        market = address(newMarket);
-        allMarkets.push(market);
-        isMarket[market] = true;
-        
-        emit MarketCreated(market, oracle, question, endTime, allMarkets.length - 1);
-    }
-    
-    /// @notice Create a new advanced binary prediction market (V2 - with metadata and analytics)
-    /// @param oracle Address that will resolve the market
-    /// @param question The prediction question
-    /// @param description Detailed market description
-    /// @param category Market category (e.g., "Crypto", "Sports", "Politics")
-    /// @param tags Array of tags for filtering
-    /// @param endTime Timestamp when trading ends
-    function createMarketV2(
-        address oracle,
-        string memory question,
-        string memory description,
         string memory category,
-        string[] memory tags,
-        uint256 endTime
-    ) external returns (address market) {
+        address resolver,
+        uint256 endTime,
+        bool isNegRisk
+    ) external returns (bytes32 questionId) {
+        require(bytes(question).length > 0, "Empty question");
+        require(endTime > block.timestamp, "Invalid end time");
+        require(resolver != address(0), "Invalid resolver");
+        
         // Check if caller has permission
         require(
             protocolConfig.canCreateMarket(msg.sender),
             "Not authorized to create markets"
         );
         
-        // Validate with protocol config
-        protocolConfig.validateMarketParams(oracle, endTime, question);
-        
-        string memory questionHash = string(abi.encodePacked(question, category));
-        require(protocolConfig.registerMarket(questionHash), "Market exists");
-        
-        BinaryMarketV2 newMarket = new BinaryMarketV2(
-            conditionalTokens,
-            collateralToken,
-            oracle,
-            question,
-            description,
-            category,
-            tags,
-            endTime
+        // Generate unique question ID
+        questionId = keccak256(
+            abi.encodePacked(question, category, block.timestamp, msg.sender)
         );
         
-        market = address(newMarket);
-        allMarkets.push(market);
-        isMarket[market] = true;
+        require(marketData[questionId].createdAt == 0, "Market exists");
         
-        emit MarketV2Created(market, oracle, question, category, endTime, allMarkets.length - 1);
+        bytes32 conditionId;
+        
+        if (isNegRisk) {
+            // Create via NegRiskAdapter
+            conditionId = negRiskAdapter.createNegRiskMarket(
+                questionId,
+                resolver,
+                collateralToken
+            );
+        } else {
+            // Create standard market via CTF
+            conditionalTokens.prepareCondition(questionId, resolver, 2);
+            conditionId = conditionalTokens.getConditionId(resolver, questionId, 2);
+        }
+        
+        // Store market data
+        marketData[questionId] = Market({
+            questionId: questionId,
+            conditionId: conditionId,
+            question: question,
+            category: category,
+            resolver: resolver,
+            endTime: endTime,
+            createdAt: block.timestamp,
+            isNegRisk: isNegRisk,
+            resolved: false
+        });
+        
+        allMarketIds.push(questionId);
+        
+        // Register with protocol config
+        string memory questionHash = string(abi.encodePacked(question, category));
+        protocolConfig.registerMarket(questionHash);
+        
+        emit MarketCreated(
+            questionId,
+            conditionId,
+            resolver,
+            question,
+            category,
+            endTime,
+            isNegRisk
+        );
+    }
+    
+    /// @notice Resolve a market using optimistic oracle
+    /// @param questionId Market to resolve
+    /// @param payouts Payout array [yesAmount, noAmount]
+    function resolveMarket(
+        bytes32 questionId,
+        uint256[] calldata payouts
+    ) external {
+        Market storage market = marketData[questionId];
+        require(market.createdAt > 0, "Market not found");
+        require(!market.resolved, "Already resolved");
+        require(msg.sender == market.resolver, "Not resolver");
+        require(payouts.length == 2, "Invalid payouts");
+        
+        // Report payouts to CTF
+        conditionalTokens.reportPayouts(questionId, payouts);
+        
+        market.resolved = true;
+        
+        emit MarketResolved(questionId, market.conditionId, payouts);
     }
     
     /// @notice Update protocol config (admin only)
@@ -127,29 +176,47 @@ contract MarketFactory is Ownable {
     
     /// @notice Get total number of markets
     function marketCount() external view returns (uint256) {
-        return allMarkets.length;
+        return allMarketIds.length;
     }
     
-    /// @notice Get market address by index
-    function getMarket(uint256 index) external view returns (address) {
-        require(index < allMarkets.length, "Index out of bounds");
-        return allMarkets[index];
+    /// @notice Get market by question ID
+    function getMarket(bytes32 questionId) external view returns (Market memory) {
+        return marketData[questionId];
     }
     
-    /// @notice Get all markets in a range
-    function getMarkets(uint256 start, uint256 count) external view returns (address[] memory) {
-        require(start < allMarkets.length, "Start out of bounds");
+    /// @notice Get all market IDs in a range
+    function getMarketIds(uint256 start, uint256 count) 
+        external 
+        view 
+        returns (bytes32[] memory) 
+    {
+        require(start < allMarketIds.length, "Start out of bounds");
         
         uint256 end = start + count;
-        if (end > allMarkets.length) {
-            end = allMarkets.length;
+        if (end > allMarketIds.length) {
+            end = allMarketIds.length;
         }
         
-        address[] memory markets = new address[](end - start);
+        bytes32[] memory ids = new bytes32[](end - start);
         for (uint256 i = start; i < end; i++) {
-            markets[i - start] = allMarkets[i];
+            ids[i - start] = allMarketIds[i];
         }
         
-        return markets;
+        return ids;
+    }
+    
+    /// @notice Get the CTF Exchange address
+    function getExchange() external view returns (address) {
+        return address(ctfExchange);
+    }
+    
+    /// @notice Get the ConditionalTokens address
+    function getCTF() external view returns (address) {
+        return address(conditionalTokens);
+    }
+    
+    /// @notice Get the OptimisticOracle address
+    function getOracle() external view returns (address) {
+        return address(optimisticOracle);
     }
 }

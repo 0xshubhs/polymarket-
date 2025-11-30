@@ -28,41 +28,36 @@ contract SeedMarkets is Script {
         usdc.faucet();
         
         // Create sample markets
-        address market1 = factory.createMarket(
+        bytes32 market1 = factory.createMarket(
+            "Will ETH reach $5000 by end of 2024?",
+            "Crypto",
             deployer,
-            "Will Bitcoin reach $100,000 by end of 2025?",
-            block.timestamp + 365 days
+            block.timestamp + 365 days,
+            false
         );
-        console2.log("Market 1 created:", market1);
+        console2.logBytes32(market1);
         
-        address market2 = factory.createMarket(
+        bytes32 market2 = factory.createMarket(
+            "Will BTC surpass $100,000 in 2024?",
+            "Crypto",
             deployer,
-            "Will Ethereum reach $10,000 by end of 2025?",
-            block.timestamp + 365 days
+            block.timestamp + 300 days,
+            false
         );
-        console2.log("Market 2 created:", market2);
+        console2.logBytes32(market2);
         
-        address market3 = factory.createMarket(
+        bytes32 market3 = factory.createMarket(
+            "Will Solana flip Ethereum by market cap in 2024?",
+            "Crypto",
             deployer,
-            "Will AI models surpass human performance in all tasks by 2026?",
-            block.timestamp + 730 days
+            block.timestamp + 200 days,
+            false
         );
-        console2.log("Market 3 created:", market3);
+        console2.logBytes32(market3);
         
-        // Add liquidity to markets
-        uint256 liquidityPerMarket = 10000 * 10**6; // 10k USDC
-        
-        usdc.approve(market1, liquidityPerMarket);
-        BinaryMarket(market1).addLiquidity(liquidityPerMarket);
-        console2.log("Added liquidity to Market 1");
-        
-        usdc.approve(market2, liquidityPerMarket);
-        BinaryMarket(market2).addLiquidity(liquidityPerMarket);
-        console2.log("Added liquidity to Market 2");
-        
-        usdc.approve(market3, liquidityPerMarket);
-        BinaryMarket(market3).addLiquidity(liquidityPerMarket);
-        console2.log("Added liquidity to Market 3");
+        // Note: New architecture doesn't use AMM pools
+        // Markets are traded via CTFExchange order book
+        // No liquidity provision needed
         
         vm.stopBroadcast();
         

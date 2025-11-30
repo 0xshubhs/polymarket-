@@ -24,7 +24,7 @@ contract DeployScript is Script {
         console2.log("MockUSDC deployed at:", address(usdc));
         
         // Deploy MarketFactory (creates ConditionalTokens and ProtocolConfig internally)
-        MarketFactory factory = new MarketFactory(usdc, deployer);
+        MarketFactory factory = new MarketFactory(usdc, deployer, deployer, deployer);
         console2.log("MarketFactory deployed at:", address(factory));
         console2.log("ConditionalTokens deployed at:", address(factory.conditionalTokens()));
         console2.log("ProtocolConfig deployed at:", address(factory.protocolConfig()));
