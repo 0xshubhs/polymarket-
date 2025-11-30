@@ -111,8 +111,9 @@ contract MarketFactory is Ownable {
             );
         } else {
             // Create standard market via CTF
-            conditionalTokens.prepareCondition(questionId, resolver, 2);
-            conditionId = conditionalTokens.getConditionId(resolver, questionId, 2);
+            // MarketFactory is the oracle, so it can resolve markets
+            conditionalTokens.prepareCondition(questionId, address(this), 2);
+            conditionId = conditionalTokens.getConditionId(address(this), questionId, 2);
         }
         
         // Store market data
@@ -159,7 +160,8 @@ contract MarketFactory is Ownable {
         require(payouts.length == 2, "Invalid payouts");
         
         // Report payouts to CTF
-        conditionalTokens.reportPayouts(questionId, payouts);
+        // Note: reportPayouts will verify msg.sender matches the oracle used in prepareCondition
+        conditionalTokens.reportPayouts(market.questionId, payouts);
         
         market.resolved = true;
         

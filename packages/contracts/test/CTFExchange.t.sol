@@ -18,8 +18,8 @@ contract CTFExchangeTest is Test {
     
     address public operator = address(1);
     address public feeRecipient = address(2);
-    address public alice = address(3);
-    address public bob = address(4);
+    address public alice = vm.addr(0xa11ce); // Derive address from private key
+    address public bob = vm.addr(0xb0b); // Derive address from private key
     
     bytes32 public questionId;
     bytes32 public conditionId;
@@ -214,10 +214,33 @@ contract CTFExchangeTest is Test {
         assertGt(feeRecipientAfter, feeRecipientBefore, "Fees should be collected");
     }
     
-    // Helper function (simplified signature)
-    function _signOrder(CTFExchange.Order memory order) internal pure returns (bytes memory) {
-        // In production, use proper EIP-712 signing
-        // For testing, return dummy signature
-        return abi.encodePacked(bytes32(0), bytes32(0), uint8(27));
+    // Helper function to sign orders using EIP-712
+    function _signOrder(CTFExchange.Order memory order) internal view returns (bytes memory) {
+        // Calculate EIP-712 domain separator manually
+        bytes32 domainSeparator = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256(bytes("CTFExchange")),
+                keccak256(bytes("1")),
+                block.chainid,
+                address(exchange)
+            )
+        );
+        
+        bytes32 orderHash = exchange.hashOrder(order);
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, orderHash));
+        
+        // Use the maker's private key (for testing we'll use predictable keys)
+        uint256 privateKey;
+        if (order.maker == alice) {
+            privateKey = 0xa11ce; // Alice's private key
+        } else if (order.maker == bob) {
+            privateKey = 0xb0b; // Bob's private key
+        } else {
+            privateKey = 1;
+        }
+        
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(privateKey, digest);
+        return abi.encodePacked(r, s, v);
     }
 }
