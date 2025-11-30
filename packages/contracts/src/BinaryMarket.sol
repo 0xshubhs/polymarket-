@@ -24,21 +24,22 @@ contract BinaryMarket is ReentrancyGuard, IERC1155Receiver {
     uint256 public immutable noPositionId;
     
     string public question;
-    uint256 public endTime;
-    uint256 public resolutionTime;
+    
+    // Packed storage for gas efficiency (slot 1)
+    uint96 public endTime;
+    uint96 public resolutionTime;
+    uint16 public feeRate; // 0-10000 basis points
+    bool public isResolved;
     
     // AMM state
     uint256 public yesReserve;
     uint256 public noReserve;
     uint256 public totalLiquidity;
+    uint256 public accumulatedFees;
     mapping(address => uint256) public liquidityBalance;
     
     // Trading parameters
     uint256 public constant FEE_DENOMINATOR = 10000;
-    uint256 public feeRate = 10; // 0.1% fee
-    uint256 public accumulatedFees;
-    
-    bool public isResolved;
     
     event LiquidityAdded(address indexed provider, uint256 amount, uint256 liquidity);
     event LiquidityRemoved(address indexed provider, uint256 amount, uint256 liquidity);
@@ -63,7 +64,8 @@ contract BinaryMarket is ReentrancyGuard, IERC1155Receiver {
         collateralToken = _collateralToken;
         oracle = _oracle;
         question = _question;
-        endTime = _endTime;
+        endTime = uint96(_endTime);
+        feeRate = 10; // 0.1% fee
         
         // Create unique question ID
         questionId = keccak256(abi.encodePacked(_question, block.timestamp, address(this)));
@@ -107,20 +109,26 @@ contract BinaryMarket is ReentrancyGuard, IERC1155Receiver {
         );
         
         // Calculate liquidity tokens to mint
-        if (totalLiquidity == 0) {
+        uint256 _totalLiquidity = totalLiquidity;
+        if (_totalLiquidity == 0) {
             // Initial liquidity
             liquidity = amount;
             yesReserve = amount;
             noReserve = amount;
         } else {
-            // Proportional liquidity
-            liquidity = (amount * totalLiquidity) / yesReserve;
-            yesReserve += amount;
+            // Proportional liquidity - use cached values
+            uint256 _yesReserve = yesReserve;
+            unchecked {
+                liquidity = (amount * _totalLiquidity) / _yesReserve;
+            }
+            yesReserve = _yesReserve + amount;
             noReserve += amount;
         }
         
-        totalLiquidity += liquidity;
-        liquidityBalance[msg.sender] += liquidity;
+        unchecked {
+            totalLiquidity = _totalLiquidity + liquidity;
+            liquidityBalance[msg.sender] += liquidity;
+        }
         
         emit LiquidityAdded(msg.sender, amount, liquidity);
     }
@@ -160,12 +168,21 @@ contract BinaryMarket is ReentrancyGuard, IERC1155Receiver {
     {
         require(investmentAmount > 0, "Amount must be positive");
         require(block.timestamp < endTime, "Market ended");
-        require(yesReserve > 0 && noReserve > 0, "No liquidity");
         
-        // Calculate fee
-        uint256 fee = (investmentAmount * feeRate) / FEE_DENOMINATOR;
-        uint256 amountAfterFee = investmentAmount - fee;
-        accumulatedFees += fee;
+        // Cache storage vars
+        uint256 _yesReserve = yesReserve;
+        uint256 _noReserve = noReserve;
+        require(_yesReserve > 0 && _noReserve > 0, "No liquidity");
+        
+        // Calculate fee with unchecked math
+        uint256 _feeRate = feeRate;
+        uint256 fee;
+        uint256 amountAfterFee;
+        unchecked {
+            fee = (investmentAmount * _feeRate) / FEE_DENOMINATOR;
+            amountAfterFee = investmentAmount - fee;
+            accumulatedFees += fee;
+        }
         
         // Transfer collateral from user
         collateralToken.safeTransferFrom(msg.sender, address(this), investmentAmount);

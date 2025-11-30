@@ -24,7 +24,7 @@ contract BinaryMarketTest is Test {
     function setUp() public {
         // Deploy contracts
         usdc = new MockUSDC();
-        factory = new MarketFactory(usdc);
+        factory = new MarketFactory(usdc, address(this));
         conditionalTokens = factory.conditionalTokens();
         
         // Set end time to 30 days from now

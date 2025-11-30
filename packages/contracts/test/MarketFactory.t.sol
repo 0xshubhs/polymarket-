@@ -15,7 +15,7 @@ contract MarketFactoryTest is Test {
     
     function setUp() public {
         usdc = new MockUSDC();
-        factory = new MarketFactory(usdc);
+        factory = new MarketFactory(usdc, address(this));
     }
     
     function testCreateMarket() public {
