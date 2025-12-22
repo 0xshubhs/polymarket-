@@ -1,0 +1,81 @@
+# Multi-Chain Deployment Configuration
+
+# Supported Networks
+networks:
+  sepolia:
+    rpc: "https://1rpc.io/sepolia"
+    chain_id: 11155111
+    explorer: "https://sepolia.etherscan.io"
+    etherscan_api: "PJFEDANUFHK7RWQXU52P67QXJTVM4HB9IU"
+    
+  arbitrum_sepolia:
+    rpc: "https://sepolia-rollup.arbitrum.io/rpc"
+    chain_id: 421614
+    explorer: "https://sepolia.arbiscan.io"
+    etherscan_api: "${ARBISCAN_API_KEY}"
+    
+  optimism_sepolia:
+    rpc: "https://sepolia.optimism.io"
+    chain_id: 11155420
+    explorer: "https://sepolia-optimism.etherscan.io"
+    etherscan_api: "${OPTIMISM_ETHERSCAN_API_KEY}"
+    
+  base_sepolia:
+    rpc: "https://sepolia.base.org"
+    chain_id: 84532
+    explorer: "https://sepolia.basescan.org"
+    etherscan_api: "${BASESCAN_API_KEY}"
+    
+  polygon_amoy:
+    rpc: "https://rpc-amoy.polygon.technology"
+    chain_id: 80002
+    explorer: "https://amoy.polygonscan.com"
+    etherscan_api: "${POLYGONSCAN_API_KEY}"
+    
+  mainnet:
+    rpc: "${MAINNET_RPC_URL}"
+    chain_id: 1
+    explorer: "https://etherscan.io"
+    etherscan_api: "${ETHERSCAN_API_KEY}"
+    
+  arbitrum:
+    rpc: "https://arb1.arbitrum.io/rpc"
+    chain_id: 42161
+    explorer: "https://arbiscan.io"
+    etherscan_api: "${ARBISCAN_API_KEY}"
+    
+  optimism:
+    rpc: "https://mainnet.optimism.io"
+    chain_id: 10
+    explorer: "https://optimistic.etherscan.io"
+    etherscan_api: "${OPTIMISM_ETHERSCAN_API_KEY}"
+    
+  base:
+    rpc: "https://mainnet.base.org"
+    chain_id: 8453
+    explorer: "https://basescan.org"
+    etherscan_api: "${BASESCAN_API_KEY}"
+    
+  polygon:
+    rpc: "https://polygon-rpc.com"
+    chain_id: 137
+    explorer: "https://polygonscan.com"
+    etherscan_api: "${POLYGONSCAN_API_KEY}"
+
+# Deployment Configuration
+deployment:
+  keystore: "~/.foundry/keystores/default"
+  password_env: "KEYSTORE_PASSWORD"
+  gas_price_multiplier: 1.1
+  verify: true
+  
+# Contract Configuration by Network
+contracts:
+  testnet:
+    use_mock_usdc: true
+    initial_liquidity: "10000000000"  # 10k USDC (6 decimals)
+    
+  mainnet:
+    use_mock_usdc: false
+    usdc_address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"  # Mainnet USDC
+    initial_liquidity: "0"

@@ -1,0 +1,169 @@
+# Multi-Chain Deployment Makefile
+# Usage: make deploy-<network>
+# Example: make deploy-sepolia
+
+# Configuration
+KEYSTORE := ~/.foundry/keystores/default
+PASSWORD := "meow"
+SCRIPT := script/MultiChainDeploy.s.sol:MultiChainDeployScript
+
+# Helper variables
+DEPLOY_BASE := forge script $(SCRIPT) --keystore $(KEYSTORE) --password $(PASSWORD) --broadcast --verify -vvvv
+
+#================================
+# TESTNET DEPLOYMENTS
+#================================
+
+.PHONY: deploy-sepolia
+deploy-sepolia:
+	@echo "Deploying to Sepolia..."
+	$(DEPLOY_BASE) --rpc-url sepolia
+
+.PHONY: deploy-arbitrum-sepolia
+deploy-arbitrum-sepolia:
+	@echo "Deploying to Arbitrum Sepolia..."
+	$(DEPLOY_BASE) --rpc-url arbitrum_sepolia
+
+.PHONY: deploy-optimism-sepolia
+deploy-optimism-sepolia:
+	@echo "Deploying to Optimism Sepolia..."
+	$(DEPLOY_BASE) --rpc-url optimism_sepolia
+
+.PHONY: deploy-base-sepolia
+deploy-base-sepolia:
+	@echo "Deploying to Base Sepolia..."
+	$(DEPLOY_BASE) --rpc-url base_sepolia
+
+.PHONY: deploy-polygon-amoy
+deploy-polygon-amoy:
+	@echo "Deploying to Polygon Amoy..."
+	$(DEPLOY_BASE) --rpc-url polygon_amoy
+
+#================================
+# MAINNET DEPLOYMENTS (USE WITH CAUTION!)
+#================================
+
+.PHONY: deploy-mainnet
+deploy-mainnet:
+	@echo "⚠️  WARNING: Deploying to Ethereum Mainnet! ⚠️"
+	@read -p "Are you sure? Type 'YES' to continue: " confirm; \
+	if [ "$$confirm" = "YES" ]; then \
+		$(DEPLOY_BASE) --rpc-url mainnet; \
+	else \
+		echo "Deployment cancelled."; \
+	fi
+
+.PHONY: deploy-arbitrum
+deploy-arbitrum:
+	@echo "⚠️  WARNING: Deploying to Arbitrum One! ⚠️"
+	@read -p "Are you sure? Type 'YES' to continue: " confirm; \
+	if [ "$$confirm" = "YES" ]; then \
+		$(DEPLOY_BASE) --rpc-url arbitrum; \
+	else \
+		echo "Deployment cancelled."; \
+	fi
+
+.PHONY: deploy-optimism
+deploy-optimism:
+	@echo "⚠️  WARNING: Deploying to Optimism Mainnet! ⚠️"
+	@read -p "Are you sure? Type 'YES' to continue: " confirm; \
+	if [ "$$confirm" = "YES" ]; then \
+		$(DEPLOY_BASE) --rpc-url optimism; \
+	else \
+		echo "Deployment cancelled."; \
+	fi
+
+.PHONY: deploy-base
+deploy-base:
+	@echo "⚠️  WARNING: Deploying to Base Mainnet! ⚠️"
+	@read -p "Are you sure? Type 'YES' to continue: " confirm; \
+	if [ "$$confirm" = "YES" ]; then \
+		$(DEPLOY_BASE) --rpc-url base; \
+	else \
+		echo "Deployment cancelled."; \
+	fi
+
+.PHONY: deploy-polygon
+deploy-polygon:
+	@echo "⚠️  WARNING: Deploying to Polygon Mainnet! ⚠️"
+	@read -p "Are you sure? Type 'YES' to continue: " confirm; \
+	if [ "$$confirm" = "YES" ]; then \
+		$(DEPLOY_BASE) --rpc-url polygon; \
+	else \
+		echo "Deployment cancelled."; \
+	fi
+
+#================================
+# DEPLOYMENT TO ALL TESTNETS
+#================================
+
+.PHONY: deploy-all-testnets
+deploy-all-testnets:
+	@echo "Deploying to all testnets..."
+	@$(MAKE) deploy-sepolia
+	@sleep 5
+	@$(MAKE) deploy-arbitrum-sepolia
+	@sleep 5
+	@$(MAKE) deploy-optimism-sepolia
+	@sleep 5
+	@$(MAKE) deploy-base-sepolia
+	@sleep 5
+	@$(MAKE) deploy-polygon-amoy
+	@echo "✅ Deployed to all testnets!"
+
+#================================
+# LOCAL TESTING
+#================================
+
+.PHONY: deploy-local
+deploy-local:
+	@echo "Deploying to local anvil..."
+	forge script $(SCRIPT) --rpc-url localhost --broadcast -vvvv
+
+#================================
+# UTILITIES
+#================================
+
+.PHONY: verify-sepolia
+verify-sepolia:
+	@read -p "Enter contract address: " addr; \
+	forge verify-contract $$addr $(SCRIPT) --rpc-url sepolia --watch
+
+.PHONY: list-deployments
+list-deployments:
+	@echo "Deployment artifacts:"
+	@ls -la broadcast/MultiChainDeploy.s.sol/ 2>/dev/null || echo "No deployments found"
+	@echo "\nDeployment records:"
+	@ls -la deployments/ 2>/dev/null || echo "No deployment records found"
+
+.PHONY: clean-deployments
+clean-deployments:
+	@echo "Cleaning deployment artifacts..."
+	rm -rf broadcast/MultiChainDeploy.s.sol/
+	rm -rf deployments/
+	@echo "Clean complete"
+
+.PHONY: help
+help:
+	@echo "Multi-Chain Deployment Commands:"
+	@echo ""
+	@echo "Testnets:"
+	@echo "  make deploy-sepolia           - Deploy to Sepolia"
+	@echo "  make deploy-arbitrum-sepolia  - Deploy to Arbitrum Sepolia"
+	@echo "  make deploy-optimism-sepolia  - Deploy to Optimism Sepolia"
+	@echo "  make deploy-base-sepolia      - Deploy to Base Sepolia"
+	@echo "  make deploy-polygon-amoy      - Deploy to Polygon Amoy"
+	@echo "  make deploy-all-testnets      - Deploy to all testnets"
+	@echo ""
+	@echo "Mainnets (CAUTION!):"
+	@echo "  make deploy-mainnet           - Deploy to Ethereum Mainnet"
+	@echo "  make deploy-arbitrum          - Deploy to Arbitrum One"
+	@echo "  make deploy-optimism          - Deploy to Optimism"
+	@echo "  make deploy-base              - Deploy to Base"
+	@echo "  make deploy-polygon           - Deploy to Polygon"
+	@echo ""
+	@echo "Utilities:"
+	@echo "  make deploy-local             - Deploy to local Anvil"
+	@echo "  make list-deployments         - List deployment artifacts"
+	@echo "  make clean-deployments        - Clean deployment artifacts"
+	@echo "  make verify-sepolia           - Verify contract on Sepolia"
